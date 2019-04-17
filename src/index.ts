@@ -15,9 +15,15 @@ export interface ImportOptions {
     index?: string;
 }
 
+export interface DeleteOptions {
+    host: string;
+    index: string;
+}
+
 let option: ExportOptions;
 
 export const exportData = (options: ExportOptions) => {
+    options.host = checkHost(options.host);
     console.error(options);
     option = options;
     console.error(option);
@@ -25,10 +31,16 @@ export const exportData = (options: ExportOptions) => {
 }
 
 export const importData = (options: ImportOptions) => {
+    options.host = checkHost(options.host);
     console.error(options);
     option = options;
-    console.error(option);
     startImport();
+}
+
+export const clearIndex = (options: DeleteOptions) => {
+    options.host = checkHost(options.host);
+    console.error(options);
+    deleteIndex(options.host, options.index);
 }
 
 let runQuery = async (begin: number, query: any, resultSet: any[]) => {
@@ -122,6 +134,97 @@ let startImport = async () => {
     }
     let resultSet: any[] = await readFromFile();
     console.log('ResultSet Completed with ' + resultSet.length + ' records.');
+    let indexedData: any = checkDataImportable(resultSet);
+    let queryObjects: any[] = [];
+    for (let idx in indexedData) {
+        console.log(idx);
+        if (indexedData[idx]) {
+            for (let data of indexedData[idx]) {
+                queryObjects.push({
+                    index: {
+                        _index: idx,
+                        _type: '_doc'
+                    }
+                });
+                queryObjects.push(data);
+            }
+        }
+    }
+    callBulkService(queryObjects).then(() => console.log('Completed Successfully'));
+}
+
+let callBulkService = async (objectList: any[], index = 0) => {
+    let body = '';
+    let toCnt = index + 50;
+    for (let i = index; i < (toCnt > objectList.length ? objectList.length : toCnt); i++) {
+        body = body + JSON.stringify(objectList[i]) + '\n';
+    }
+    try {
+        await axios.post(option.host + '/_bulk', body, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        process.stdout.write("\r\x1b[K")
+        process.stdout.write('Index ' + toCnt + ' of ' + objectList.length + 'data            ');
+        if (toCnt < objectList.length) {
+            await callBulkService(objectList, toCnt);
+        }
+    } catch (err) {
+        console.error(err);
+        throw err;
+    }
+}
+
+let deleteIndex = async (host: string, index: string) => {
+    try {
+        await axios.delete(host + '/' + index, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log('Delete Operation Completed');
+    } catch (err) {
+        console.error(err)
+    }
+}
+
+let checkDataImportable = (resultSet: any[]) => {
+    let indexedMap: any = {};
+    if (option.index && option.index.length > 0) {
+        let row = resultSet[0];
+        if (row._index && row._source) {
+            indexedMap[option.index] = [];
+            for (let d of resultSet) {
+                indexedMap[option.index].push(d._source);
+            }
+        } else {
+            indexedMap[option.index] = resultSet;
+        }
+    } else {
+        let row = resultSet[0];
+        if (row._index && row._source) {
+            for (let d of resultSet) {
+                if (!indexedMap[d._index]) {
+                    indexedMap[d._index] = [];
+                }
+                indexedMap[d._index].push(d._source);
+            }
+        } else {
+            throw new Error('Imported and given data has no index parameter.');
+        }
+    }
+    return indexedMap;
+}
+
+let checkHost = (host: string) => {
+    if (host.endsWith('/')) {
+        host = host.substring(0, host.length - 1);
+    }
+    if (!host.startsWith('http://') && !host.startsWith('https://')) {
+        host = 'http://' + host;
+    }
+    return host;
 }
 
 if (process.argv.length > 2) {
@@ -129,20 +232,30 @@ if (process.argv.length > 2) {
     let index: string = '';
     let path: string = '';
     let query: string = '';
-    let isExport: boolean = true;
+    let isExport: any = null;
+    let isDelete: boolean = false;
     for (let i = 0; i < process.argv.length; i++) {
         switch (process.argv[i]) {
             case '-host':
-                host = process.argv[i + 1].toString();
+                host = checkHost(process.argv[i + 1].toString());
                 break;
             case '-index':
                 index = process.argv[i + 1].toString();
                 break;
             case 'import':
+                if (isExport === true) {
+                    throw new Error('Import and export cannot use at the same time');
+                }
                 isExport = false;
                 break;
             case 'export':
+                if (isExport === false) {
+                    throw new Error('Import and export cannot use at the same time');
+                }
                 isExport = true;
+                break;
+            case 'delete':
+                isDelete = true;
                 break;
             case '-path':
                 path = process.argv[i + 1].toString();
@@ -151,6 +264,10 @@ if (process.argv.length > 2) {
                 query = process.argv[i + 1];
                 break;
         }
+    }
+
+    if (isDelete) {
+        clearIndex({ host: host, index: index });
     }
 
     if (isExport) {
