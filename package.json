@@ -1,0 +1,31 @@
+{
+  "name": "elasticexport",
+  "version": "1.0.0",
+  "description": "Node Js Elasticsearch export and import module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oguzakpinar/elasticexport.git"
+  },
+  "keywords": [],
+  "author": "Oğuz Akpınar",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/oguzakpinar/elasticexport/issues"
+  },
+  "homepage": "https://github.com/oguzakpinar/elasticexport#readme",
+  "devDependencies": {
+    "typescript": "^3.4.3"
+  },
+  "files": [
+    "lib/**/*"
+  ],
+  "dependencies": {
+    "axios": "^0.18.0"
+  }
+}
