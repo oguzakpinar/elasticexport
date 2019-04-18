@@ -99,7 +99,7 @@ let writeToFile = (resultSet: any[], lastAdded = 0, suffix = 0) => {
             }
             appendFile(pathValue, ']', 'utf8', () => {
                 if (completed) {
-                    console.log('\nExport Finish Successfully');
+                    console.log('Export Finish Successfully');
                     resolve(true);
                 }
             });
@@ -213,7 +213,7 @@ let callBulkService = async (objectList: any[], index = 0) => {
             }
         });
         process.stdout.write("\r\x1b[K")
-        process.stdout.write('Index ' + (toCnt / 2) + ' of ' + (objectList.length / 2) + 'data            ');
+        process.stdout.write('Index ' + (toCnt / 2) + ' of ' + (objectList.length / 2) + ' data            ');
         if (toCnt < objectList.length) {
             await callBulkService(objectList, toCnt);
         }
