@@ -12,9 +12,9 @@
     "type": "git",
     "url": "git+https://github.com/oguzakpinar/elasticexport.git"
   },
-  "keywords": [],
+  "keywords": ["elasticsearch", "export", "import", "dump", "json"],
   "author": "Oğuz Akpınar",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/oguzakpinar/elasticexport/issues"
   },
