@@ -1,4 +1,4 @@
-import { writeFile, appendFile, readFile } from 'fs';
+import { writeFile, appendFile, readFile, exists } from 'fs';
 import axios from './../node_modules/axios';
 declare var process: {
     argv: string[],
@@ -7,6 +7,7 @@ declare var process: {
 
 export interface ExportOptions extends ImportOptions {
     query?: any;
+    maxFileSize?: number;
 }
 
 export interface ImportOptions {
@@ -22,25 +23,24 @@ export interface DeleteOptions {
 
 let option: ExportOptions;
 
-export const exportData = (options: ExportOptions) => {
+export const exportData = async (options: ExportOptions) => {
     options.host = checkHost(options.host);
-    console.error(options);
     option = options;
-    console.error(option);
-    startExport();
+    console.log(option);
+    await startExport();
 }
 
-export const importData = (options: ImportOptions) => {
+export const importData = async (options: ImportOptions) => {
     options.host = checkHost(options.host);
-    console.error(options);
     option = options;
-    startImport();
+    console.log(option);
+    await startImport();
 }
 
-export const clearIndex = (options: DeleteOptions) => {
+export const clearIndex = async (options: DeleteOptions) => {
     options.host = checkHost(options.host);
-    console.error(options);
-    deleteIndex(options.host, options.index);
+    console.log(options);
+    await deleteIndex(options.host, options.index);
 }
 
 let runQuery = async (begin: number, query: any, resultSet: any[]) => {
@@ -51,7 +51,10 @@ let runQuery = async (begin: number, query: any, resultSet: any[]) => {
         headers: {
             'Content-Type': 'application/json'
         }
-    }).catch((err: Error) => console.log(err));
+    }).catch((err: Error) => {
+        console.error(err);
+        throw err;
+    });
     res = res.data;
     begin = begin + 100;
     for (let data of res.hits.hits) {
@@ -69,20 +72,39 @@ let runQuery = async (begin: number, query: any, resultSet: any[]) => {
     }
 }
 
-let writeToFile = (resultSet: any[]) => {
-    console.log('Writing Progress');
-    if (!option.path || !option.path.endsWith(".json")) {
-        throw new Error('-path have to be given with .json format');
-    }
-    writeFile(option.path, '[', () => {
-        console.log("File Created Successfully");
-        for (let data of resultSet) {
-            appendFile(option.path, (start ? '' : ',') + JSON.stringify(data), 'utf8', () => process.stdout.write(''));
-            start = false;
+let writeToFile = (resultSet: any[], lastAdded = 0, suffix = 0) => {
+    return new Promise<any>((resolve, reject) => {
+        if (!option.path || !option.path.endsWith(".json")) {
+            throw new Error('-path have to be given with .json format');
         }
-        appendFile(option.path, ']', 'utf8', () => console.log('\nExport Finish Successfully'));
+        let pathValue = option.path;
+        if (suffix > 0) {
+            pathValue = pathValue.replace('.json', suffix + '.json');
+        }
+        let writeSize = 0;
+        let completed = true;
+        let start: any;
+        writeFile(pathValue, '[', () => {
+            for (let i = lastAdded; i < resultSet.length; i++) {
+                let data = JSON.stringify(resultSet[i]);
+                appendFile(pathValue, (!start ? '' : ',') + data, 'utf8', () => process.stdout.write(''));
+                start = true;
+                writeSize = writeSize + data.length;
+                let maxSize = (option.maxFileSize ? option.maxFileSize : 4096) * 1024;
+                if (writeSize > maxSize) {
+                    writeToFile(resultSet, i + 1, suffix + 1).then(() => resolve(true));
+                    completed = false;
+                    break;
+                }
+            }
+            appendFile(pathValue, ']', 'utf8', () => {
+                if (completed) {
+                    console.log('\nExport Finish Successfully');
+                    resolve(true);
+                }
+            });
+        });
     });
-    let start = true;
 
 }
 
@@ -106,9 +128,9 @@ let startExport = async () => {
     }
     let resultSet: any[] = [];
     console.log("Retriewing Strarted");
-    runQuery(0, requestQuey, resultSet).then(() => {
-        writeToFile(resultSet);
-    });
+    await runQuery(0, requestQuey, resultSet);
+    console.log('Writing Progress');
+    await writeToFile(resultSet);
 }
 
 let readFromFile = () => {
@@ -117,12 +139,37 @@ let readFromFile = () => {
         if (!option.path || !option.path.endsWith(".json")) {
             throw new Error('-path have to be given with .json format');
         }
-        readFile(option.path, 'utf8', (err, data) => {
-            if (err) {
-                console.error(err);
-                reject(err);
+        readOperation().then(data => {
+            resolve(data);
+        })
+    });
+}
+
+let readOperation = (suffix = 0) => {
+    return new Promise<any[]>((resolve, reject) => {
+        let pathValue = option.path;
+        if (suffix > 0) {
+            pathValue = pathValue.replace('.json', suffix + '.json');
+        }
+        exists(pathValue, exists => {
+            if (exists) {
+                readFile(pathValue, 'utf8', (err, data) => {
+                    if (err) {
+                        console.error(err);
+                        reject(err);
+                    } else {
+                        let resultSet: any[] = JSON.parse(data);
+                        console.log(resultSet.length + ' data found in ' + pathValue);
+                        readOperation(suffix + 1).then((value) => {
+                            if (value) {
+                                resultSet = resultSet.concat(value);
+                            }
+                            resolve(resultSet);
+                        });
+                    }
+                });
             } else {
-                resolve(JSON.parse(data));
+                resolve();
             }
         });
     });
@@ -137,7 +184,6 @@ let startImport = async () => {
     let indexedData: any = checkDataImportable(resultSet);
     let queryObjects: any[] = [];
     for (let idx in indexedData) {
-        console.log(idx);
         if (indexedData[idx]) {
             for (let data of indexedData[idx]) {
                 queryObjects.push({
@@ -150,13 +196,14 @@ let startImport = async () => {
             }
         }
     }
-    callBulkService(queryObjects).then(() => console.log('Completed Successfully'));
+    await callBulkService(queryObjects).then(() => console.log('\nCompleted Successfully'));
 }
 
 let callBulkService = async (objectList: any[], index = 0) => {
     let body = '';
-    let toCnt = index + 50;
-    for (let i = index; i < (toCnt > objectList.length ? objectList.length : toCnt); i++) {
+    let toCnt = index + 100;
+    toCnt = toCnt > objectList.length ? objectList.length : toCnt;
+    for (let i = index; i < toCnt; i++) {
         body = body + JSON.stringify(objectList[i]) + '\n';
     }
     try {
@@ -166,7 +213,7 @@ let callBulkService = async (objectList: any[], index = 0) => {
             }
         });
         process.stdout.write("\r\x1b[K")
-        process.stdout.write('Index ' + toCnt + ' of ' + objectList.length + 'data            ');
+        process.stdout.write('Index ' + (toCnt / 2) + ' of ' + (objectList.length / 2) + 'data            ');
         if (toCnt < objectList.length) {
             await callBulkService(objectList, toCnt);
         }
@@ -185,7 +232,8 @@ let deleteIndex = async (host: string, index: string) => {
         });
         console.log('Delete Operation Completed');
     } catch (err) {
-        console.error(err)
+        console.error(err);
+        throw err;
     }
 }
 
@@ -232,6 +280,7 @@ if (process.argv.length > 2) {
     let index: string = '';
     let path: string = '';
     let query: string = '';
+    let fileSize: number = 4096;
     let isExport: any = null;
     let isDelete: boolean = false;
     for (let i = 0; i < process.argv.length; i++) {
@@ -263,25 +312,46 @@ if (process.argv.length > 2) {
             case '-query':
                 query = process.argv[i + 1];
                 break;
+            case '-fileSize':
+                fileSize = parseInt(process.argv[i + 1]);
+                break;
+
         }
     }
 
     if (isDelete) {
-        clearIndex({ host: host, index: index });
-    }
-
-    if (isExport) {
-        exportData({
-            host: host,
-            path: path,
-            index: index,
-            query: query
+        clearIndex({ host: host, index: index }).then(() => {
+            if (isExport) {
+                exportData({
+                    host: host,
+                    path: path,
+                    index: index,
+                    query: query,
+                    maxFileSize: fileSize
+                });
+            } else {
+                importData({
+                    host: host,
+                    path: path,
+                    index: index
+                });
+            }
         });
     } else {
-        importData({
-            host: host,
-            path: path,
-            index: index
-        });
+        if (isExport) {
+            exportData({
+                host: host,
+                path: path,
+                index: index,
+                query: query,
+                maxFileSize: fileSize
+            });
+        } else {
+            importData({
+                host: host,
+                path: path,
+                index: index
+            });
+        }
     }
 }
