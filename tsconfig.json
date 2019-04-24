@@ -3,9 +3,15 @@
         "target": "es5",
         "module": "commonjs",
         "declaration": true,
+        "rootDir": "src",
         "outDir": "./lib",
         "strict": true,
-        "lib": ["es2015"]
+        "lib": ["es2015"],
+        "types": [
+            "node"
+        ],
+        "esModuleInterop": true,
+        "resolveJsonModule": true
     },
     "include": [
         "src"

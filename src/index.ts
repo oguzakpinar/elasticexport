@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { writeFile, appendFile, readFile, exists } from 'fs';
 import axios from './../node_modules/axios';
 declare var process: {
