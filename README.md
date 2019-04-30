@@ -6,6 +6,10 @@ $ npm install -g elasticexport
 ```
 
 ## Capabilities
+
+### Export and Import Mapping Option Added
+  if you add mapping option to your export and import command mapping and settings also export and import.
+
 ### Export Data
 Options
   - -host http:// is not required host and port is required 

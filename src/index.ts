@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { writeFile, appendFile, readFile, exists } from 'fs';
+import { writeFile, appendFile } from 'fs';
 import axios from './../node_modules/axios';
+import { MappingOperation } from './mapping';
+import { ReadData } from './read-data';
 declare var process: {
     argv: string[],
     stdout: any
@@ -32,11 +34,25 @@ export const exportData = async (options: ExportOptions) => {
     await startExport();
 }
 
+export const exportMapping = async (options: ExportOptions) => {
+    options.host = checkHost(options.host);
+    option = options;
+    console.log(option);
+    await MappingOperation.exportData(option);
+}
+
 export const importData = async (options: ImportOptions) => {
     options.host = checkHost(options.host);
     option = options;
     console.log(option);
     await startImport();
+}
+
+export const importMapping = async (options: ImportOptions) => {
+    options.host = checkHost(options.host);
+    option = options;
+    console.log(option);
+    await MappingOperation.importData(option);
 }
 
 export const clearIndex = async (options: DeleteOptions) => {
@@ -141,39 +157,9 @@ let readFromFile = () => {
         if (!option.path || !option.path.endsWith(".json")) {
             throw new Error('-path have to be given with .json format');
         }
-        readOperation().then(data => {
+        ReadData.readFromFile(option.path).then(data => {
             resolve(data);
         })
-    });
-}
-
-let readOperation = (suffix = 0) => {
-    return new Promise<any[]>((resolve, reject) => {
-        let pathValue = option.path;
-        if (suffix > 0) {
-            pathValue = pathValue.replace('.json', suffix + '.json');
-        }
-        exists(pathValue, exists => {
-            if (exists) {
-                readFile(pathValue, 'utf8', (err, data) => {
-                    if (err) {
-                        console.error(err);
-                        reject(err);
-                    } else {
-                        let resultSet: any[] = JSON.parse(data);
-                        console.log(resultSet.length + ' data found in ' + pathValue);
-                        readOperation(suffix + 1).then((value) => {
-                            if (value) {
-                                resultSet = resultSet.concat(value);
-                            }
-                            resolve(resultSet);
-                        });
-                    }
-                });
-            } else {
-                resolve();
-            }
-        });
     });
 }
 
@@ -284,6 +270,7 @@ if (process.argv.length > 2) {
     let query: string = '';
     let fileSize: number = 4096;
     let isExport: any = null;
+    let mapping: boolean = false;
     let isDelete: boolean = false;
     for (let i = 0; i < process.argv.length; i++) {
         switch (process.argv[i]) {
@@ -305,6 +292,10 @@ if (process.argv.length > 2) {
                 }
                 isExport = true;
                 break;
+            case 'mapping':
+                console.error('Mapping comes');
+                mapping = true;
+                break;
             case 'delete':
                 isDelete = true;
                 break;
@@ -323,15 +314,7 @@ if (process.argv.length > 2) {
 
     if (isDelete) {
         clearIndex({ host: host, index: index }).then(() => {
-            if (isExport) {
-                exportData({
-                    host: host,
-                    path: path,
-                    index: index,
-                    query: query,
-                    maxFileSize: fileSize
-                });
-            } else {
+            if (!isExport) {
                 importData({
                     host: host,
                     path: path,
@@ -341,19 +324,37 @@ if (process.argv.length > 2) {
         });
     } else {
         if (isExport) {
-            exportData({
-                host: host,
-                path: path,
-                index: index,
-                query: query,
-                maxFileSize: fileSize
-            });
+            console.error('Exported');
+            if (mapping) {
+                console.error('Mapping comes');
+                exportMapping({
+                    host: host,
+                    path: path,
+                    index: index
+                });
+            } else {
+                exportData({
+                    host: host,
+                    path: path,
+                    index: index,
+                    query: query,
+                    maxFileSize: fileSize
+                });
+            }
         } else {
-            importData({
-                host: host,
-                path: path,
-                index: index
-            });
+            if (mapping) {
+                importMapping({
+                    host: host,
+                    path: path,
+                    index: index
+                });
+            } else {
+                importData({
+                    host: host,
+                    path: path,
+                    index: index
+                });
+            }
         }
     }
 }
